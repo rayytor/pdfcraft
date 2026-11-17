@@ -15577,3 +15577,26 @@ fn without_a_bold_face_on_the_page_a_bold_range_takes_the_standard_bold_font() {
     assert_eq!(words.len(), 1);
     assert_eq!(words[0].2, "Helvetica-Bold");
 }
+
+/// Dokuman: a paragraph whose first row is indented, as in a letter. Its rows end together at
+/// the right edge (Helvetica 12: the first row starts 32 pt in).
+#[test]
+fn an_indented_first_row_keeps_inside_the_paragraph_when_a_word_grows() {
+    let mut doc = styles_page(
+        "BT /F1 12 Tf 14 TL 104 700 Td (alpha beta gamma delta epsilon zeta eta theta) Tj -32 -14 Td (iota kappa lambda mu nu xi omicron pi rho sigma tau) Tj T* (upsilon phi chi psi omega) Tj ET",
+        &[],
+    );
+    let block = text::text_blocks(&doc, 0).unwrap().into_iter().next().unwrap();
+    let draft = block.reflow_text.clone();
+    let at = draft.find("beta").unwrap();
+    let style = text::BlockStyle { ranges: vec![text::RangeStyle { size: Some(16.0), ..style_range(at..at + 4, None, None) }], ..Default::default() };
+    text::rewrite_block(&mut doc, 0, 0, Some(&draft), &style).unwrap();
+    let doc = reopen(&doc);
+    let right = block.rect[2];
+    for line in text::text_lines(&doc, 0).unwrap() {
+        assert!(line.rect[2] <= right + 0.5, "{:?} ends at {} past the paragraph's edge {right}", line.text, line.rect[2]);
+    }
+    // The word that no longer fits flows on with the rest instead of keeping a row to itself.
+    let text: Vec<String> = text::text_lines(&doc, 0).unwrap().into_iter().map(|l| l.text.trim().to_owned()).collect();
+    assert!(text.iter().any(|t| t.starts_with("theta iota")), "{text:?}");
+}

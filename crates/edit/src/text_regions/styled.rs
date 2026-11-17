@@ -624,9 +624,23 @@ fn validated_ranges<'a>(draft: &str, style: &'a BlockStyle) -> Result<Vec<&'a Ra
     Ok(ranges)
 }
 
-fn replacement_text<'a>(block: &'a TextBlock, text: Option<&'a str>) -> Result<&'a str, EditError> {
+fn replacement_text<'a>(block: &'a TextBlock, text: Option<&'a str>, style: &BlockStyle) -> Result<&'a str, EditError> {
+    // Dokuman: when only the formatting changes and it makes letters wider or narrower, the
+    // paragraph flows again as it does after typing (its wraps rejoined), instead of keeping each
+    // row, which would leave a word that no longer fits on a row of its own. Byte offsets stay
+    // valid: the two texts differ only where a space became a line break.
+    let resized = style.ranges.iter().any(|r| {
+        r.size.is_some()
+            || r.family.is_some()
+            || r.resource.is_some()
+            || r.bold.is_some()
+            || r.italic.is_some()
+            || r.char_spacing.is_some()
+            || r.scale.is_some()
+    });
     let draft = match text {
         Some(text) if text != block.text => text,
+        Some(_) if resized && block.reflow_text.len() == block.text.len() => &block.reflow_text,
         _ => &block.editor_text,
     };
     if draft.len() > 4_000_000 {
@@ -723,9 +737,10 @@ fn styled_break_before(chars: &[StyledChar]) -> Vec<bool> {
     break_before
 }
 
+/// `width` gives the room for each row by its number (Dokuman: an indented first row has less).
 fn wrap_styled_rows(
     chars: &[StyledChar],
-    width: f64,
+    width: impl Fn(usize) -> f64,
     measure: impl Fn(&[StyledChar]) -> Result<f64, EditError>,
 ) -> Result<WrappedStyledRows, EditError> {
     let break_before = styled_break_before(chars);
@@ -775,7 +790,7 @@ fn wrap_styled_rows(
         }
         let word = chars.get(at..end).unwrap_or_default();
         let word_width = measure(word)?;
-        if !row.is_empty() && !item.0.is_whitespace() && row_width + word_width > width + 0.5 {
+        if !row.is_empty() && !item.0.is_whitespace() && row_width + word_width > width(rows.len()) + 0.5 {
             let mut trimmed = 0usize;
             while row.last().is_some_and(|c: &StyledChar| c.0.is_whitespace()) {
                 row.pop();
@@ -1658,7 +1673,7 @@ pub(crate) fn rewrite_styled_block(
     max_glyphs: usize,
 ) -> Result<LineEdit, EditError> {
     let first = block.lines.first().and_then(|i| lines.get(*i)).ok_or_else(|| EditError::Invalid("the paragraph has no source runs".into()))?;
-    let draft = replacement_text(block, text)?;
+    let draft = replacement_text(block, text, style)?;
     if has_no_effective_style_change(block, draft, style) {
         return Ok(LineEdit { substituted: None });
     }
@@ -1759,7 +1774,18 @@ pub(crate) fn rewrite_styled_block(
         }
         Ok(width)
     };
-    let (mut rows, row_ranges, row_lines, row_soft, row_gap) = wrap_styled_rows(&chars, width, measure)?;
+    // A row is drawn from where the same row of the source starts (see `left` below), so an
+    // indented first row has that much less room before the paragraph's right edge (Dokuman).
+    // Centred text, an explicit width or alignment lay rows out across the whole width.
+    let crop = p.crop(doc);
+    let centered = is_centred(block, lines, (crop[0] + crop[2]) / 2.0, first.size);
+    let indents: Vec<f64> = if style.width.is_none() && style.align.is_none() && style.aligns.is_empty() && !centered {
+        block.rows.iter().map(|row| row_rect(row, lines).map_or(0.0, |r| (r[0] - block.rect[0]).clamp(0.0, width / 2.0))).collect()
+    } else {
+        Vec::new()
+    };
+    let row_width = |row: usize| width - indents.get(row).copied().unwrap_or(0.0);
+    let (mut rows, row_ranges, row_lines, row_soft, row_gap) = wrap_styled_rows(&chars, row_width, measure)?;
     let space_styles: Vec<_> = rows.iter_mut().map(|row| assign_subset_space_fonts(row, &metrics)).collect();
     let streams = content_streams(doc, &p.dict)?;
     let pieces = crate::text::joined(&streams);
@@ -1809,8 +1835,6 @@ pub(crate) fn rewrite_styled_block(
     // that marker, so it is omitted and geometry groups those rows as before.
     let marked = kept.iter().all(|row| !*row);
     push_whole_paragraph_marker(&mut block_ops, marked, "BMC");
-    let crop = p.crop(doc);
-    let centered = is_centred(block, lines, (crop[0] + crop[2]) / 2.0, first.size);
     let source_leading = block
         .rows
         .windows(2)
