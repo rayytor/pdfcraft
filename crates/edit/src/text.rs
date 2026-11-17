@@ -140,11 +140,6 @@ pub struct TextLine {
 }
 
 impl TextLine {
-    /// The font size in user space (points on the page): `size` times the text's own scale.
-    pub fn user_size(&self) -> f64 {
-        self.size * self.origin.k
-    }
-
     /// Refuses editing a line whose font's writing mode couldn't be read (§9.7.4.3).
     fn ensure_editable(&self) -> Result<(), EditError> {
         self.unreadable_mode.as_ref().map_or(Ok(()), |why| Err(EditError::Invalid(why.clone())))
