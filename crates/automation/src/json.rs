@@ -79,6 +79,8 @@ pub(crate) fn parse_style_ranges(value: Option<&Value>) -> Result<Vec<pdfcraft_e
                 underline: a.opt_bool("underline")?,
                 char_spacing: a.opt_num("char_spacing")?,
                 scale: a.opt_num("scale")?,
+                bold: None,
+                italic: None,
             })
         })
         .collect()

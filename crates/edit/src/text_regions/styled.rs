@@ -841,6 +841,8 @@ fn apply_range_styles<'a>(
                     underline: None,
                     char_spacing: None,
                     scale: None,
+                    bold: None,
+                    italic: None,
                 };
                 let range = selected.unwrap_or(&default_range);
                 let mut line = lines.get(source).unwrap_or(first).clone();
@@ -852,6 +854,8 @@ fn apply_range_styles<'a>(
                     line.base_font = base.to_owned();
                     line.bold = bold;
                     line.italic = italic;
+                } else if range.bold.is_some() || range.italic.is_some() {
+                    restyle_face(&mut line, lines, range.bold, range.italic);
                 }
                 if let Some(resource) = &range.resource {
                     line.font = resource.clone();
@@ -882,6 +886,39 @@ fn apply_range_styles<'a>(
         }
     }
     StyledLines { lines: styled_lines, spans: styled_spans, underlines, overrides }
+}
+
+/// Makes `line` bold or not and italic or not in its own typeface (Dokuman): the page's face of
+/// the same family in that style, when one of the page's lines uses it; otherwise the standard
+/// font of the nearest family. Encoding later looks for a subset of the chosen face that can show
+/// the text, and falls back to the standard font of that style ([`FontResolver::substitute_font`]).
+fn restyle_face(line: &mut TextLine, page_lines: &[TextLine], bold: Option<bool>, italic: Option<bool>) {
+    let bold = bold.unwrap_or(line.bold);
+    let italic = italic.unwrap_or(line.italic);
+    if (bold, italic) == (line.bold, line.italic) {
+        return;
+    }
+    let family = family_key(&line.base_font);
+    if let Some(face) = page_lines.iter().find(|l| l.bold == bold && l.italic == italic && family_key(&l.base_font) == family) {
+        line.font = face.font.clone();
+        line.base_font = face.base_font.clone();
+    } else {
+        let base = source_family(&line.base_font).base_font(bold, italic);
+        line.font = format!("PCRange{}", base.replace('-', ""));
+        line.base_font = base.to_owned();
+    }
+    line.bold = bold;
+    line.italic = italic;
+}
+
+/// A face's name without its subset tag and style words: "ZPCESP+TimesNewRomanPS-BoldMT" and
+/// "TimesNewRomanPSMT" are the same family.
+fn family_key(base_font: &str) -> String {
+    let mut key = pdfcraft_fonts::embedding::face_key(base_font);
+    for word in ["bold", "italic", "oblique", "regular", "roman"] {
+        key = key.replace(word, "");
+    }
+    key
 }
 
 /// Select one existing subset of the exact source face for a Thai span. Never replace its
@@ -1958,5 +1995,18 @@ mod tests {
         assert_eq!(styled_run_end(&items, 3), 4);
         assert_eq!(styled_run_end(&items, 4), 4);
         assert_eq!(styled_run_end(&[], 0), 0);
+    }
+}
+
+#[cfg(test)]
+mod family_tests {
+    use super::family_key;
+
+    #[test]
+    fn the_family_key_leaves_out_the_subset_tag_and_style_words() {
+        assert_eq!(family_key("ZPCESP+TimesNewRomanPS-BoldMT"), family_key("ELAYRG+TimesNewRomanPSMT"));
+        assert_eq!(family_key("DYZSWH+TimesNewRomanPS-ItalicMT"), family_key("TimesNewRomanPSMT"));
+        assert_eq!(family_key("Arial-BoldMT"), family_key("ArialMT"));
+        assert_ne!(family_key("Arial-BoldMT"), family_key("TimesNewRomanPSMT"));
     }
 }

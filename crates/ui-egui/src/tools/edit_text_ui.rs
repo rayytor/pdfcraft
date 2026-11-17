@@ -327,6 +327,8 @@ impl LineEditor {
                 underline: style.underline.take(),
                 char_spacing: style.char_spacing.take(),
                 scale: style.scale.take(),
+                bold: None,
+                italic: None,
             });
         }
         style

@@ -555,4 +555,9 @@ pub struct RangeStyle {
     pub underline: Option<bool>,
     pub char_spacing: Option<f64>,
     pub scale: Option<f64>,
+    /// Bold or not, italic or not, in the text's own typeface (Dokuman): the face of that family
+    /// and style the page already uses when there is one, otherwise the standard font of the
+    /// nearest family. Ignored when `family` or `resource` is given.
+    pub bold: Option<bool>,
+    pub italic: Option<bool>,
 }

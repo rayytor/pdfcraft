@@ -2645,6 +2645,8 @@ fn styled_fallback_batches_keep_face_choices_and_range_styles() {
         underline: None,
         char_spacing: None,
         scale: None,
+        bold: None,
+        italic: None,
     };
     let style = text::BlockStyle {
         width: Some(520.0),
@@ -7962,6 +7964,8 @@ fn an_ocr_rewrite_goes_on_top_of_paint_over_where_it_lands() {
         underline: None,
         char_spacing: None,
         scale: None,
+        bold: None,
+        italic: None,
     };
     let enlarged = text::BlockStyle { ranges: vec![range], ..Default::default() };
     let above = "q 200 0 0 60 100 200 cm /Im0 Do Q";
@@ -8441,6 +8445,8 @@ fn disjoint_style_ranges_preserve_unselected_runs_and_validate_utf8_atomically()
                 underline: Some(true),
                 char_spacing: None,
                 scale: None,
+                bold: None,
+                italic: None,
             },
             RangeStyle {
                 range: b..b + 4,
@@ -8451,6 +8457,8 @@ fn disjoint_style_ranges_preserve_unselected_runs_and_validate_utf8_atomically()
                 underline: None,
                 char_spacing: Some(0.2),
                 scale: Some(90.0),
+                bold: None,
+                italic: None,
             },
         ],
         width: Some(300.0),
@@ -8480,6 +8488,8 @@ fn disjoint_style_ranges_preserve_unselected_runs_and_validate_utf8_atomically()
             underline: None,
             char_spacing: None,
             scale: None,
+            bold: None,
+            italic: None,
         }],
         ..Default::default()
     };
@@ -8902,6 +8912,8 @@ fn turned_paragraph_keeps_its_line_breaks_when_a_word_is_added() {
         underline: None,
         char_spacing: None,
         scale: None,
+        bold: None,
+        italic: None,
     };
     let style = text::BlockStyle { ranges: vec![range], ..Default::default() };
     assert!(text::rewrite_block(&mut doc, 0, 0, Some("Only line"), &style).is_err());
@@ -9175,6 +9187,8 @@ fn rows_the_edit_does_not_reach_keep_their_source_operators() {
         underline: None,
         char_spacing: None,
         scale: None,
+        bold: None,
+        italic: None,
     };
     text::rewrite_block(&mut doc, 0, block, Some(&draft), &text::BlockStyle { ranges: vec![range], ..Default::default() }).unwrap();
     let bytes = String::from_utf8_lossy(&page_content_bytes(&doc, 0)).into_owned();
@@ -11924,6 +11938,8 @@ fn carriage_returns_break_rows_on_the_styled_path() {
         underline: None,
         char_spacing: None,
         scale: None,
+        bold: None,
+        italic: None,
     };
     for style in [text::BlockStyle::default(), text::BlockStyle { ranges: vec![red], ..Default::default() }] {
         let mut doc = text_page("BT /F1 12 Tf 72 700 Td (Hello world) Tj ET");
@@ -12028,6 +12044,8 @@ fn spaces_and_indents_in_a_subset_without_a_space_glyph_round_trip_across_edits(
             underline: None,
             char_spacing: None,
             scale: None,
+            bold: None,
+            italic: None,
         }],
         ..Default::default()
     };
@@ -12051,6 +12069,8 @@ fn a_reassigned_subset_space_keeps_its_own_underline() {
             underline: Some(true),
             char_spacing: None,
             scale: None,
+            bold: None,
+            italic: None,
         }],
         ..Default::default()
     };
@@ -14238,6 +14258,8 @@ fn explicit_builtin_thai_replaces_an_unavailable_source_without_installing_a_fon
             underline: None,
             char_spacing: None,
             scale: None,
+            bold: None,
+            italic: None,
         }],
         ..Default::default()
     };
@@ -15349,6 +15371,8 @@ fn unicode_row_breaks_break_the_row_instead_of_needing_a_glyph() {
         underline: None,
         char_spacing: None,
         scale: None,
+        bold: None,
+        italic: None,
     };
     for separator in ['\u{2028}', '\u{2029}', '\u{0085}', '\u{000B}', '\u{000C}', '\u{001C}', '\u{001D}', '\u{001E}'] {
         let draft = format!("one{separator}two");
@@ -15476,4 +15500,80 @@ fn without_push_below_the_text_under_a_grown_paragraph_stays() {
     let below = line(&doc);
     text::rewrite_block(&mut doc, 0, 0, Some(PUSH_DRAFT), &text::BlockStyle::default()).unwrap();
     assert_eq!(line(&doc), below);
+}
+
+/// Dokuman's bold and italic ranges: a page with Helvetica in three styles, `extra` its fonts beyond F1.
+fn styles_page(content: &str, extra: &[&str]) -> Document {
+    let mut objs: Vec<String> = vec![
+        "<< /Type /Catalog /Pages 2 0 R >>".into(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".into(),
+        String::new(),
+        format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len()),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>".into(),
+    ];
+    let mut fonts = String::from("/F1 5 0 R");
+    for (i, base) in extra.iter().enumerate() {
+        fonts.push_str(&format!(" /F{} {} 0 R", i + 2, i + 6));
+        objs.push(format!("<< /Type /Font /Subtype /Type1 /BaseFont /{base} /Encoding /WinAnsiEncoding >>"));
+    }
+    objs[2] = format!("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Contents 4 0 R /Resources << /Font << {fonts} >> >> >>");
+    let mut out = b"%PDF-1.7\n".to_vec();
+    let mut offs = Vec::new();
+    for (i, o) in objs.iter().enumerate() {
+        offs.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n{o}\nendobj\n", i + 1).as_bytes());
+    }
+    let x = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1).as_bytes());
+    for o in offs {
+        out.extend_from_slice(format!("{o:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{x}\n%%EOF\n", objs.len() + 1).as_bytes());
+    Document::open(Arc::new(out)).unwrap()
+}
+
+fn style_range(range: std::ops::Range<usize>, bold: Option<bool>, italic: Option<bool>) -> text::RangeStyle {
+    text::RangeStyle { range, family: None, resource: None, size: None, color: None, underline: None, char_spacing: None, scale: None, bold, italic }
+}
+
+/// (text, font resource, base font) of each line holding `word`.
+fn lines_with(doc: &Document, word: &str) -> Vec<(String, String, String)> {
+    text::text_lines(doc, 0).unwrap().into_iter().filter(|l| l.text.contains(word)).map(|l| (l.text.trim().to_owned(), l.font, l.base_font)).collect()
+}
+
+#[test]
+fn a_bold_or_italic_range_takes_the_pages_own_face_of_that_style() {
+    let mut doc = styles_page(
+        "BT /F1 12 Tf 72 700 Td (Plain words here) Tj ET\nBT /F2 12 Tf 72 600 Td (Bold) Tj ET\nBT /F3 12 Tf 72 560 Td (Slanted) Tj ET",
+        &["Helvetica-Bold", "Helvetica-Oblique"],
+    );
+    let draft = "Plain words here";
+    let style = text::BlockStyle { ranges: vec![style_range(6..11, Some(true), None), style_range(12..16, None, Some(true))], ..Default::default() };
+    text::rewrite_block(&mut doc, 0, 0, Some(draft), &style).unwrap();
+    let doc = reopen(&doc);
+    assert_eq!(lines_with(&doc, "words"), [("words".into(), "F2".into(), "Helvetica-Bold".into())]);
+    assert_eq!(lines_with(&doc, "here"), [("here".into(), "F3".into(), "Helvetica-Oblique".into())]);
+    assert_eq!(lines_with(&doc, "Plain"), [("Plain".into(), "F1".into(), "Helvetica".into())]);
+    assert!(text::text_lines(&doc, 0).unwrap().iter().all(|l| ["F1", "F2", "F3"].contains(&l.font.as_str())), "no font is added");
+}
+
+#[test]
+fn bold_text_made_not_bold_takes_the_pages_regular_face() {
+    let mut doc = styles_page("BT /F2 12 Tf 72 700 Td (Heavy heading) Tj ET\nBT /F1 12 Tf 72 600 Td (Plain) Tj ET", &["Helvetica-Bold"]);
+    let style = text::BlockStyle { ranges: vec![style_range(0..5, Some(false), None)], ..Default::default() };
+    text::rewrite_block(&mut doc, 0, 0, Some("Heavy heading"), &style).unwrap();
+    let doc = reopen(&doc);
+    assert_eq!(lines_with(&doc, "Heavy"), [("Heavy".into(), "F1".into(), "Helvetica".into())]);
+    assert_eq!(lines_with(&doc, "heading"), [("heading".into(), "F2".into(), "Helvetica-Bold".into())]);
+}
+
+#[test]
+fn without_a_bold_face_on_the_page_a_bold_range_takes_the_standard_bold_font() {
+    let mut doc = styles_page("BT /F1 12 Tf 72 700 Td (Plain words) Tj ET", &[]);
+    let style = text::BlockStyle { ranges: vec![style_range(6..11, Some(true), None)], ..Default::default() };
+    text::rewrite_block(&mut doc, 0, 0, Some("Plain words"), &style).unwrap();
+    let doc = reopen(&doc);
+    let words = lines_with(&doc, "words");
+    assert_eq!(words.len(), 1);
+    assert_eq!(words[0].2, "Helvetica-Bold");
 }
