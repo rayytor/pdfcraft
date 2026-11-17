@@ -212,6 +212,9 @@ fn on_same_baseline(line: &TextLine, target: &TextLine) -> bool {
 
 /// Rewrite paragraph `block` with new text (or its own) and formatting, rewrapped to its width.
 pub fn rewrite_block(doc: &mut Document, page: usize, block: usize, text: Option<&str>, style: &BlockStyle) -> Result<LineEdit, EditError> {
+    if style.push_below {
+        return super::push::rewrite_pushing(doc, page, block, text, style);
+    }
     let edit = rewrite_block_with_limit(doc, page, block, text, style, MAX_TYPE3_GLYPHS)?;
     drop_unused_fallback_fonts(doc, page);
     Ok(edit)

@@ -34,6 +34,7 @@ mod fallback;
 pub mod forms;
 mod interp;
 mod lines;
+mod push;
 mod rewrite;
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ fn prepare_ocr_text_edit(editor: &mut crate::history::Editor, info: &pdfcraft_re
     // in the paper's colour and draw the new text in the ink's.
     Some(match edit {
         Edit::EditTextBlock { page, block, text, mut style } => {
-            let plain = style == pdfcraft_edit::BlockStyle::default();
+            let plain = pdfcraft_edit::BlockStyle { push_below: false, ..style.clone() } == pdfcraft_edit::BlockStyle::default();
             // Only invisible text is sampled; the blocks are usually cached from opening it.
             if style.cover.is_none()
                 && let Some(info) = info.pages.get(page)

@@ -119,13 +119,15 @@ pub(crate) fn layout_draft(
     text: &str,
     style: &BlockStyle,
 ) -> Result<TextEditLayout, EditError> {
-    if text == source.editor_text && *style == BlockStyle::default() {
+    if text == source.editor_text && (BlockStyle { push_below: false, ..style.clone() }) == BlockStyle::default() {
         return Ok(TextEditLayout { source_rect: source.rect, draft_rect: Some(source.rect), overflow: false });
     }
     // Subtract the untouched runs by value, rather than by operator offsets: a rewrite may
     // split BT/ET or add font resources. A multiset also handles coincident repeated text.
-    let key =
-        |line: &TextLine| (line.text.clone(), line.font.clone(), line.rect.map(f64::to_bits), line.size.to_bits(), line.color.map(f64::to_bits));
+    // Boxes are compared to a thousandth of a point: rewriting the stream can move a later,
+    // untouched line by a rounding error, which would make it count as part of the draft.
+    let thousandths = |v: f64| (v * 1000.0).round().to_bits();
+    let key = |line: &TextLine| (line.text.clone(), line.font.clone(), line.rect.map(thousandths), line.size.to_bits(), line.color.map(f64::to_bits));
     let mut untouched = std::collections::BTreeMap::new();
     for (index, line) in lines.iter().enumerate() {
         if !source.lines.contains(&index) {

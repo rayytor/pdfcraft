@@ -15413,3 +15413,67 @@ fn thai_paragraphs_break_the_row_on_unicode_row_breaks() {
         assert_eq!(rows(&doc), ["กข", "ค"], "matching U+{:04X}", u32::from(separator));
     }
 }
+
+/// Dokuman's "text below moves down": a paragraph, the paragraph and drawn line under it, a word
+/// beside its column and a footer far below.
+fn push_page() -> Document {
+    text_page(concat!(
+        "BT /F1 12 Tf 14 TL 72 700 Td (one two three four five six seven) Tj T* (eight nine ten eleven twelve) Tj T* (thirteen fourteen fifteen) Tj ET\n",
+        "BT /F1 12 Tf 72 640 Td (Below the paragraph) Tj ET\n",
+        "0 0 0 RG 1 w 72 630 m 300 630 l S\n",
+        "BT /F1 12 Tf 420 655 Td (Beside) Tj ET\n",
+        "BT /F1 10 Tf 72 40 Td (Footer) Tj ET",
+    ))
+}
+
+fn push_rect(doc: &Document, start: &str) -> [f64; 4] {
+    text::text_blocks(doc, 0).unwrap().into_iter().find(|b| b.text.starts_with(start)).unwrap_or_else(|| panic!("no paragraph {start}")).rect
+}
+
+const PUSH_DRAFT: &str =
+    "This sentence was added by the test. one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen";
+
+#[test]
+fn a_paragraph_that_grows_pushes_what_is_under_it_down() {
+    let mut doc = push_page();
+    let (old, below, beside, footer) = (push_rect(&doc, "one"), push_rect(&doc, "Below"), push_rect(&doc, "Beside"), push_rect(&doc, "Footer"));
+    let rule = page_rules(&doc, 0).unwrap();
+    let style = text::BlockStyle { push_below: true, ..Default::default() };
+    text::rewrite_block(&mut doc, 0, 0, Some(PUSH_DRAFT), &style).unwrap();
+    for d in [&doc, &reopen(&doc)] {
+        let new = push_rect(d, "This sentence");
+        let grown = old[1] - new[1];
+        assert!(grown > 10.0, "the draft takes more rows: {old:?} -> {new:?}");
+        let moved = push_rect(d, "Below");
+        assert!((below[3] - moved[3] - grown).abs() < 0.01, "the paragraph under it moves down as far: {below:?} -> {moved:?}, grown {grown}");
+        assert!(new[1] - moved[3] > (old[1] - below[3]) - 0.01, "the gap between them stays");
+        let rules = page_rules(d, 0).unwrap();
+        assert_eq!(rules.len(), rule.len());
+        assert!((rule[0][1] - rules[0][1] - grown).abs() < 0.01, "the drawn line moves with it: {rule:?} -> {rules:?}");
+        assert!((rule[0][0] - rules[0][0]).abs() < 0.01, "and only down");
+        assert_eq!(push_rect(d, "Beside"), beside, "text beside the column stays");
+        assert_eq!(push_rect(d, "Footer"), footer, "the empty space above the footer takes the push");
+    }
+}
+
+#[test]
+fn a_paragraph_that_does_not_grow_moves_nothing() {
+    let mut doc = push_page();
+    let below = push_rect(&doc, "Below");
+    let rule = page_rules(&doc, 0).unwrap();
+    let style = text::BlockStyle { push_below: true, ..Default::default() };
+    text::rewrite_block(&mut doc, 0, 0, Some("one two three"), &style).unwrap();
+    assert_eq!(push_rect(&doc, "Below"), below);
+    assert_eq!(page_rules(&doc, 0).unwrap(), rule);
+}
+
+#[test]
+fn without_push_below_the_text_under_a_grown_paragraph_stays() {
+    let mut doc = push_page();
+    // Without the push the grown paragraph reaches the line under it, which then reads as part of
+    // it: look for the line itself.
+    let line = |d: &Document| text::text_lines(d, 0).unwrap().into_iter().find(|l| l.text.starts_with("Below")).unwrap().rect;
+    let below = line(&doc);
+    text::rewrite_block(&mut doc, 0, 0, Some(PUSH_DRAFT), &text::BlockStyle::default()).unwrap();
+    assert_eq!(line(&doc), below);
+}

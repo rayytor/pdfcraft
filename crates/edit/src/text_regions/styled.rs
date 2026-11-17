@@ -636,7 +636,7 @@ fn replacement_text<'a>(block: &'a TextBlock, text: Option<&'a str>) -> Result<&
 }
 
 fn has_no_effective_style_change(block: &TextBlock, draft: &str, style: &BlockStyle) -> bool {
-    draft == block.editor_text && *style == BlockStyle::default()
+    draft == block.editor_text && BlockStyle { push_below: false, ..style.clone() } == BlockStyle::default()
 }
 
 fn page_font_metrics(
@@ -1730,7 +1730,8 @@ pub(crate) fn rewrite_styled_block(
     // A row the edit doesn't reach keeps its source operators, so its kerning, TJ word gaps and
     // glyph widths stay exactly as they were instead of being rebuilt from the text state. A row
     // aligned on its own is reached; the rows around it are not.
-    let plain = BlockStyle { ranges: Vec::new(), sources: Vec::new(), aligns: Vec::new(), ..style.clone() } == BlockStyle::default();
+    let plain =
+        BlockStyle { ranges: Vec::new(), sources: Vec::new(), aligns: Vec::new(), push_below: false, ..style.clone() } == BlockStyle::default();
     let mut kept = if plain {
         untouched_rows(block, draft, &row_ranges)
             .into_iter()

@@ -540,6 +540,9 @@ pub struct BlockStyle {
     /// How far across [`BlockStyle::cover`] may reach, whatever its padding: the edges of the words
     /// on either side that stay (user space).
     pub cover_between: Option<[f64; 2]>,
+    /// When the rewritten paragraph needs more height than it had, move what lies under it in
+    /// its column down to make room (Dokuman; see `text/push.rs`). Not a change of formatting.
+    pub push_below: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
